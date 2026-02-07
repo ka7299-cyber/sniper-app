@@ -4,26 +4,39 @@ import yfinance as yf
 import plotly.graph_objects as go
 
 # 頁面基本設定
-st.set_page_config(page_title="Sniper X V100", layout="wide")
+st.set_page_config(page_title="Sniper X V101", layout="wide")
 
-# 移植大師參數 (來自您的 V75 原生代碼)
+# 移植大師參數 (來自原生 V75 代碼)
 MASTER_PARAMS = {'2330': 17, '2317': 18, '2303': 21, '2454': 29, '2603': 35}
 
-st.title("🚀 Sniper X 戰情室 V100")
-st.markdown("---")
+st.title("🚀 Sniper X 戰情室 V101")
+st.sidebar.header("控制面板")
 
 # 側邊欄輸入
-stock_id = st.sidebar.text_input("請輸入股票代號", value="2330").upper()
+stock_id = st.sidebar.text_input("請輸入股票代號", value="2330").upper().strip()
+
+def get_data_with_fallback(sid):
+    """
+    自動修復上櫃股票無法讀取的問題
+    """
+    # 優先嘗試上市 (.TW)
+    ticker_tw = f"{sid}.TW"
+    df = yf.download(ticker_tw, period="1y", progress=False)
+    
+    # 如果上市抓不到，嘗試上櫃 (.TWO)
+    if df.empty:
+        ticker_two = f"{sid}.TWO"
+        df = yf.download(ticker_two, period="1y", progress=False)
+        return df, ticker_two
+    
+    return df, ticker_tw
 
 if stock_id:
-    # 判斷上市或上櫃
-    ticker = f"{stock_id}.TW" if len(stock_id) == 4 else stock_id
-    
     with st.spinner(f'正在分析 {stock_id} ...'):
-        df = yf.download(ticker, period="1y", progress=False)
+        df, final_ticker = get_data_with_fallback(stock_id)
         
         if not df.empty:
-            # 修正 yfinance 多重索引問題
+            # 處理多重索引問題
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
                 
@@ -41,29 +54,20 @@ if stock_id:
             c2.metric(f"指標 ({ma_days}MA)", f"{last_ma:.2f}")
             c3.metric("趨勢狀態", status)
             
-            # 互動式 K 線與均線圖 (Plotly)
+            # 互動式 Plotly 圖表
             fig = go.Figure()
-            # 價格線
-            fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name='Price', 
-                                     line=dict(color='#1f77b4', width=2)))
-            # 均線
-            fig.add_trace(go.Scatter(x=df.index, y=df['MA'], name=f'{ma_days}MA', 
-                                     line=dict(color='#ff7f0e', width=2, dash='dash')))
+            fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name='Price', line=dict(color='#1f77b4')))
+            fig.add_trace(go.Scatter(x=df.index, y=df['MA'], name=f'{ma_days}MA', line=dict(color='#ff7f0e', dash='dash')))
             
-            # 圖表美化
             fig.update_layout(
-                title=f"{stock_id} 互動式戰情圖表",
-                xaxis_title="日期",
-                yaxis_title="價格",
-                height=500,
+                title=f"{stock_id} ({final_ticker}) 戰情圖表",
                 template="plotly_white",
-                margin=dict(l=0, r=0, t=40, b=0),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                height=500,
+                margin=dict(l=0, r=0, t=50, b=0)
             )
             st.plotly_chart(fig, use_container_width=True)
             
         else:
-            st.error(f"❌ 無法取得 {stock_id} 的資料，請檢查代號是否正確。")
+            st.error(f"❌ 依然找不到 {stock_id} 的資料。請確認代號是否正確。")
 
-st.sidebar.markdown("---")
-st.sidebar.info("本系統使用 Yahoo Finance 即時數據。")
+st.sidebar.info(f"當前模式：智慧後綴補位 (TW/TWO)")
